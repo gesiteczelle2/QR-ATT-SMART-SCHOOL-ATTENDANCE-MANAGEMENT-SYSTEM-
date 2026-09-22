@@ -7,19 +7,20 @@
     "icon": "./assets/images/icon.png",
     "scheme": "qr-attendance",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
     "ios": {
       "supportsTablet": true
+    },
+    "extra":{
+      "supabaseUrl":"https://ywzwcycvsobhmaallect.supabase.co",
+      "supabaseAnonKey":"sb_publishable_0tcA8LBSbMEnhTBAdDQNdQ_K0DzByOU"
     },
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "foregroundImage": "./assets/images/icon.png"
       },
-      "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.czelle_gesite.QRATT"
     },
     "web": {
       "output": "static",
@@ -41,6 +42,12 @@
     ],
     "experiments": {
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "6b42321b-8d2f-48eb-a823-b6a8c2814612"
+      }
     }
   }
 }
