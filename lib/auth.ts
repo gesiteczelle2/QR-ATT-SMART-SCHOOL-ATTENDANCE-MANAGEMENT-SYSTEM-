@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
+
 import { supabase } from './supabase';
+
 import type { Session, User } from '@supabase/supabase-js';
 
 type AuthState = {
@@ -11,6 +13,7 @@ type AuthState = {
 let globalSession: Session | null = null;
 let globalUser: User | null = null;
 let globalLoading = false;
+
 let listeners: Set<() => void> = new Set();
 
 function notify() {
@@ -44,11 +47,30 @@ export function useAuth(): AuthState {
   };
 }
 
-export async function signUp(email: string, password: string) {
+export type SignUpProfile = {
+  full_name: string;
+  role: 'student' | 'teacher';
+};
+
+export async function signUp(
+  email: string,
+  password: string,
+  profile?: SignUpProfile
+) {
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
   });
+
+  if (!error && data.session && profile) {
+    await supabase
+      .from('profiles')
+      .update({
+        full_name: profile.full_name,
+        role: profile.role,
+      })
+      .eq('id', data.session.user.id);
+  }
 
   if (!error && data.session) {
     setAuth(data.session);
@@ -57,11 +79,15 @@ export async function signUp(email: string, password: string) {
   return { data, error };
 }
 
-export async function signIn(email: string, password: string) {
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email,
-    password,
-  });
+export async function signIn(
+  email: string,
+  password: string
+) {
+  const { data, error } =
+    await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
 
   if (!error && data.session) {
     setAuth(data.session);

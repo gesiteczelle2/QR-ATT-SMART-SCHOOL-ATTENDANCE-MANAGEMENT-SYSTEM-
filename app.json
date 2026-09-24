@@ -7,13 +7,11 @@
     "icon": "./assets/images/icon.png",
     "scheme": "qr-attendance",
     "userInterfaceStyle": "light",
+
     "ios": {
       "supportsTablet": true
     },
-    "extra":{
-      "supabaseUrl":"https://ywzwcycvsobhmaallect.supabase.co",
-      "supabaseAnonKey":"sb_publishable_0tcA8LBSbMEnhTBAdDQNdQ_K0DzByOU"
-    },
+
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
@@ -22,10 +20,12 @@
       "predictiveBackGestureEnabled": false,
       "package": "com.czelle_gesite.QRATT"
     },
+
     "web": {
       "output": "static",
       "favicon": "./assets/images/favicon.png"
     },
+
     "plugins": [
       "expo-router",
       [
@@ -40,10 +40,14 @@
       "expo-sqlite",
       "@react-native-community/datetimepicker"
     ],
+
     "experiments": {
       "reactCompiler": true
     },
+
     "extra": {
+      "supabaseUrl": "https://ywzwcycvsobhmaallect.supabase.co",
+      "supabaseAnonKey": "sb_publishable_0tcA8LBSbMEnhTBAdDQNdQ_K0DzByOU",
       "router": {},
       "eas": {
         "projectId": "6b42321b-8d2f-48eb-a823-b6a8c2814612"
