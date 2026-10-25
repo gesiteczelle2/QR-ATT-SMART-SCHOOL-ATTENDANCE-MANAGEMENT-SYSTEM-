@@ -1,8 +1,13 @@
+
 import Ionicons from '@expo/vector-icons/Ionicons';
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-
-import { COLORS } from '@/constants/colors';
+import { useTheme } from '@/app/contexts/ThemeContext';
 
 type Props = {
   title: string;
@@ -17,99 +22,134 @@ export default function AppButton({
   theme,
   onPress,
 }: Props) {
-  if (theme === 'primary') {
-    return (
-      <View style={styles.buttonOuter}>
-        <Pressable
-          style={[
-            styles.buttonInner,
-            styles.primaryFill,
-          ]}
-          onPress={onPress}
-        >
-          <Ionicons
-            name={icon}
-            size={22}
-            color={COLORS.textOnPrimary}
-            style={styles.icon}
-          />
-
-          <Text
-            style={[
-              styles.label,
-              styles.primaryLabel,
-            ]}
-          >
-            {title}
-          </Text>
-        </Pressable>
-      </View>
-    );
-  }
+  const { colors } = useTheme();
+  const styles = createStyles(colors);
+  const isPrimary = theme === 'primary';
 
   return (
     <View style={styles.buttonOuter}>
       <Pressable
-        style={[
-          styles.buttonInner,
-          styles.secondaryFill,
-        ]}
         onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={title}
+        style={({ pressed }) => [
+          styles.buttonInner,
+          isPrimary
+            ? styles.primaryButton
+            : styles.secondaryButton,
+          pressed && styles.pressed,
+        ]}
       >
-        <Ionicons
-          name={icon}
-          size={22}
-          color={COLORS.textSecondary}
-          style={styles.icon}
-        />
+        <View
+          style={[
+            styles.iconContainer,
+            isPrimary
+              ? styles.primaryIconContainer
+              : styles.secondaryIconContainer,
+          ]}
+        >
+          <Ionicons
+            name={icon}
+            size={21}
+            color={
+              isPrimary
+                ? colors.textOnPrimary
+                : colors.primary
+            }
+          />
+        </View>
 
-        <Text style={styles.label}>
+        <Text
+          style={[
+            styles.label,
+            isPrimary
+              ? styles.primaryLabel
+              : styles.secondaryLabel,
+          ]}
+        >
           {title}
         </Text>
+
+        <Ionicons
+          name="chevron-forward"
+          size={18}
+          color={
+            isPrimary
+              ? 'rgba(255,255,255,0.8)'
+              : colors.textSecondary
+          }
+        />
       </Pressable>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  buttonOuter: {
-    width: '100%',
-    marginBottom: 14,
-  },
+function createStyles(
+  colors: ReturnType<typeof useTheme>['colors']
+) {
+  return StyleSheet.create({
+    buttonOuter: {
+      width: '100%',
+      marginBottom: 14,
+    },
 
-  buttonInner: {
-    borderRadius: 10,
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-  },
+    buttonInner: {
+      minHeight: 62,
+      borderRadius: 18,
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: 12,
+      overflow: 'hidden',
+    },
 
-  primaryFill: {
-    backgroundColor: COLORS.primary,
-    borderWidth: 1,
-    borderColor: COLORS.primary,
-  },
+    primaryButton: {
+      backgroundColor: colors.primary,
+      borderWidth: 1,
+      borderColor: colors.glassBorder,
+    },
 
-  secondaryFill: {
-    backgroundColor: COLORS.card,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
+    secondaryButton: {
+      backgroundColor: colors.glass,
+      borderWidth: 1,
+      borderColor: colors.glassBorder,
+    },
 
-  icon: {
-    paddingRight: 10,
-  },
+    iconContainer: {
+      width: 38,
+      height: 38,
+      borderRadius: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
 
-  label: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: COLORS.textPrimary,
-  },
+    primaryIconContainer: {
+      backgroundColor: 'rgba(255,255,255,0.16)',
+    },
 
-  primaryLabel: {
-    fontWeight: '700',
-    color: COLORS.textOnPrimary,
-  },
-});
+    secondaryIconContainer: {
+      backgroundColor: colors.glassLight,
+    },
+
+    label: {
+      flex: 1,
+      fontSize: 15,
+      fontWeight: '600',
+    },
+
+    primaryLabel: {
+      color: colors.textOnPrimary,
+      fontWeight: '700',
+    },
+
+    secondaryLabel: {
+      color: colors.textPrimary,
+    },
+
+    pressed: {
+      opacity: 0.78,
+      transform: [{ scale: 0.985 }],
+    },
+  });
+}

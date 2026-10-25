@@ -1,7 +1,8 @@
-import { useCallback, useState } from 'react';
 
+import { createElement, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Platform,
   Pressable,
   ScrollView,
@@ -10,488 +11,541 @@ import {
   TextInput,
   View,
 } from 'react-native';
-
-import { useFocusEffect } from 'expo-router';
-
 import DateTimePicker from '@react-native-community/datetimepicker';
-
-import Ionicons from '@expo/vector-icons/Ionicons';
-
 import QRCode from 'react-native-qrcode-svg';
 
-import AppButton from '@/components/AppButton';
-
-import { useAuth } from '@/lib/auth';
-
-import {
-  createEvent,
-  type Event,
-} from '@/lib/events';
-
-import type { Role } from '@/lib/profiles';
-
-import { getUserRole } from '@/lib/role';
-
+import { useTheme } from '@/app/contexts/ThemeContext';
+import { supabase } from '@/lib/supabase';
+import { createEvent, type Event, type EventType } from '@/lib/events';
 import { buildQRPayload } from '@/lib/qr';
 
+type PickerTarget = 'start' | 'end';
+type PickerMode = 'date' | 'time';
+
 export default function TeacherScreen() {
-  const { user } = useAuth();
+  const { colors } = useTheme();
+  const styles = createStyles(colors);
 
-  const [role, setRole] =
-    useState<Role | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [isTeacher, setIsTeacher] = useState(false);
 
-  const [roleLoading, setRoleLoading] =
-    useState(true);
+  const [eventType, setEventType] =
+    useState<EventType>('school_event');
+  const [title, setTitle] = useState('');
+  const [venue, setVenue] = useState('');
+  const [classSection, setClassSection] = useState('');
 
-  const [eventTitle, setEventTitle] =
-    useState('');
-
-  const [eventCode, setEventCode] =
-    useState('');
-
-  const [startTime, setStartTime] =
-    useState(new Date());
-
-  const [endTime, setEndTime] =
-    useState(
-      new Date(Date.now() + 60 * 60 * 1000)
-    );
-
-  const [picker, setPicker] =
-    useState<
-      'startDate' |
-      'startTime' |
-      'endDate' |
-      'endTime' |
-      null
-    >(null);
-
-  const [eventCreated, setEventCreated] =
-    useState(false);
-
-  const [payload, setPayload] =
-    useState<string | null>(null);
-
-  const [message, setMessage] =
-    useState<string | null>(null);
-
-  useFocusEffect(
-    useCallback(() => {
-      let active = true;
-
-      setRoleLoading(true);
-
-      if (!user) {
-        setRole(null);
-        setRoleLoading(false);
-
-        return () => {
-          active = false;
-        };
-      }
-
-      getUserRole(user.id).then((userRole) => {
-        if (!active) return;
-
-        setRole(userRole);
-        setRoleLoading(false);
-      });
-
-      return () => {
-        active = false;
-      };
-    }, [user])
+  const [startDate, setStartDate] = useState(new Date());
+  const [endDate, setEndDate] = useState(
+    new Date(Date.now() + 60 * 60 * 1000)
   );
 
-  const formatDateTime = (date: Date) => {
-    return date.toLocaleString();
-  };
+  const [pickerTarget, setPickerTarget] =
+    useState<PickerTarget | null>(null);
+  const [pickerMode, setPickerMode] =
+    useState<PickerMode>('date');
 
-  const openStartPicker = () => {
-    setPicker('startDate');
-  };
+  const [payload, setPayload] = useState('');
 
-  const openEndPicker = () => {
-    setPicker('endDate');
-  };
+  useEffect(() => {
+    let active = true;
 
-  const handlePickerChange = (
-    event: any,
-    selectedDate?: Date
-  ) => {
-    if (event.type === 'dismissed') {
-      setPicker(null);
-      return;
-    }
+    async function checkTeacherAccess() {
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
 
-    if (!selectedDate) {
-      setPicker(null);
-      return;
-    }
+        if (!user) {
+          if (active) setIsTeacher(false);
+          return;
+        }
 
-    if (picker === 'startDate') {
-      const updatedStart = new Date(startTime);
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', user.id)
+          .maybeSingle();
 
-      updatedStart.setFullYear(
-        selectedDate.getFullYear()
-      );
+        if (error) {
+          console.error('Unable to check teacher role:', error.message);
+          if (active) setIsTeacher(false);
+          return;
+        }
 
-      updatedStart.setMonth(
-        selectedDate.getMonth()
-      );
-
-      updatedStart.setDate(
-        selectedDate.getDate()
-      );
-
-      setStartTime(updatedStart);
-
-      if (Platform.OS === 'android') {
-        setPicker('startTime');
+        if (active) {
+          setIsTeacher(data?.role === 'teacher');
+        }
+      } catch (error) {
+        console.error('Teacher access check failed:', error);
+        if (active) setIsTeacher(false);
+      } finally {
+        if (active) setLoading(false);
       }
     }
 
-    if (picker === 'startTime') {
-      const updatedStart = new Date(startTime);
+    void checkTeacherAccess();
 
-      updatedStart.setHours(
-        selectedDate.getHours()
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  function openPicker(target: PickerTarget, mode: PickerMode) {
+    setPickerTarget(target);
+    setPickerMode(mode);
+  }
+
+  function updateDate(
+    target: PickerTarget,
+    mode: PickerMode,
+    selectedDate: Date
+  ) {
+    const current = target === 'start' ? startDate : endDate;
+    const updated = new Date(current);
+
+    if (mode === 'date') {
+      updated.setFullYear(
+        selectedDate.getFullYear(),
+        selectedDate.getMonth(),
+        selectedDate.getDate()
       );
-
-      updatedStart.setMinutes(
-        selectedDate.getMinutes()
+    } else {
+      updated.setHours(
+        selectedDate.getHours(),
+        selectedDate.getMinutes(),
+        0,
+        0
       );
+    }
 
-      updatedStart.setSeconds(0);
-      updatedStart.setMilliseconds(0);
+    if (target === 'start') {
+      setStartDate(updated);
 
-      setStartTime(updatedStart);
+      if (endDate <= updated) {
+        setEndDate(new Date(updated.getTime() + 60 * 60 * 1000));
+      }
+    } else {
+      setEndDate(updated);
+    }
+
+    setPayload('');
+  }
+
+  function handleNativePickerChange(
+    event: { type?: string },
+    selectedDate?: Date
+  ) {
+    if (event.type === 'dismissed') {
+      setPickerTarget(null);
+      return;
+    }
+
+    if (selectedDate && pickerTarget) {
+      updateDate(pickerTarget, pickerMode, selectedDate);
+    }
+
+    setPickerTarget(null);
+  }
+
+  function formatDate(date: Date) {
+    return date.toLocaleDateString();
+  }
+
+  function formatTime(date: Date) {
+    return date.toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }
+
+  function toDateInputValue(date: Date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+
+    return `${year}-${month}-${day}`;
+  }
+
+  function toTimeInputValue(date: Date) {
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+
+    return `${hours}:${minutes}`;
+  }
+
+  function handleWebInput(
+    target: PickerTarget,
+    mode: PickerMode,
+    value: string
+  ) {
+    if (!value) return;
+
+    const current = target === 'start' ? startDate : endDate;
+    const updated = new Date(current);
+
+    if (mode === 'date') {
+      const [year, month, day] = value.split('-').map(Number);
+
+      if (!year || !month || !day) return;
+
+      updated.setFullYear(year, month - 1, day);
+    } else {
+      const [hours, minutes] = value.split(':').map(Number);
 
       if (
-        endTime <= updatedStart
+        hours === undefined ||
+        minutes === undefined ||
+        Number.isNaN(hours) ||
+        Number.isNaN(minutes)
       ) {
-        setEndTime(
-          new Date(
-            updatedStart.getTime() +
-              60 * 60 * 1000
-          )
-        );
+        return;
       }
 
-      setPicker(null);
+      updated.setHours(hours, minutes, 0, 0);
     }
 
-    if (picker === 'endDate') {
-      const updatedEnd = new Date(endTime);
+    updateDate(target, mode, updated);
+  }
 
-      updatedEnd.setFullYear(
-        selectedDate.getFullYear()
+  function renderWebDateInput(
+    target: PickerTarget,
+    mode: PickerMode,
+    value: string
+  ) {
+    return createElement('input' as any, {
+      type: mode,
+      value,
+      onChange: (event: { target: { value: string } }) =>
+        handleWebInput(target, mode, event.target.value),
+      style: {
+        flex: 1,
+        minWidth: 0,
+        height: 46,
+        padding: '0 10px',
+        border: `1px solid ${colors.border}`,
+        borderRadius: 12,
+        backgroundColor: colors.surface,
+        color: colors.textPrimary,
+        fontSize: 14,
+        boxSizing: 'border-box',
+      },
+    });
+  }
+
+  function renderDateTimeRow(target: PickerTarget) {
+    const date = target === 'start' ? startDate : endDate;
+
+    if (Platform.OS === 'web') {
+      return (
+        <View style={styles.dateRow}>
+          {renderWebDateInput(
+            target,
+            'date',
+            toDateInputValue(date)
+          )}
+          {renderWebDateInput(
+            target,
+            'time',
+            toTimeInputValue(date)
+          )}
+        </View>
       );
-
-      updatedEnd.setMonth(
-        selectedDate.getMonth()
-      );
-
-      updatedEnd.setDate(
-        selectedDate.getDate()
-      );
-
-      setEndTime(updatedEnd);
-
-      if (Platform.OS === 'android') {
-        setPicker('endTime');
-      }
     }
 
-    if (picker === 'endTime') {
-      const updatedEnd = new Date(endTime);
-
-      updatedEnd.setHours(
-        selectedDate.getHours()
-      );
-
-      updatedEnd.setMinutes(
-        selectedDate.getMinutes()
-      );
-
-      updatedEnd.setSeconds(0);
-      updatedEnd.setMilliseconds(0);
-
-      setEndTime(updatedEnd);
-
-      setPicker(null);
-    }
-  };
-
-  const addTime = (minutes: number) => {
-    setEndTime(
-      new Date(
-        startTime.getTime() +
-          minutes * 60 * 1000
-      )
-    );
-  };
-
-  const handleCreateEvent = async () => {
-    const title = eventTitle.trim();
-    const code = eventCode.trim();
-
-    setMessage(null);
-
-    if (!title) {
-      setMessage(
-        'Please enter an event title.'
-      );
-      return;
-    }
-
-    if (!code) {
-      setMessage(
-        'Please enter an event code.'
-      );
-      return;
-    }
-
-    if (endTime <= startTime) {
-      setMessage(
-        'End time must be later than start time.'
-      );
-      return;
-    }
-
-    const event: Event = {
-      eventId: code,
-      title: title,
-      start: startTime.toISOString(),
-      end: endTime.toISOString(),
-    };
-
-    const { error } =
-      await createEvent(event);
-
-    if (error) {
-      setEventCreated(false);
-      setPayload(null);
-      setMessage(error);
-      return;
-    }
-
-    setEventCreated(true);
-    setPayload(
-      buildQRPayload(event)
-    );
-
-    setMessage(
-      'Event created successfully!'
-    );
-  };
-
-  if (roleLoading) {
     return (
-      <View style={styles.centerContainer}>
-        <ActivityIndicator
-          size="large"
-          color="#2E7DFF"
-        />
+      <View style={styles.dateRow}>
+        <Pressable
+          style={styles.dateButton}
+          onPress={() => openPicker(target, 'date')}
+        >
+          <Text style={styles.dateButtonText}>
+            {formatDate(date)}
+          </Text>
+        </Pressable>
 
-        <Text style={styles.loadingText}>
-          Checking your account...
-        </Text>
+        <Pressable
+          style={styles.dateButton}
+          onPress={() => openPicker(target, 'time')}
+        >
+          <Text style={styles.dateButtonText}>
+            {formatTime(date)}
+          </Text>
+        </Pressable>
       </View>
     );
   }
 
-  if (role !== 'teacher') {
+  function generateEventCode() {
     return (
-      <View style={styles.centerContainer}>
-        <Ionicons
-          name="lock-closed-outline"
-          size={56}
-          color="#777777"
-        />
+      'QR' +
+      Date.now().toString(36).toUpperCase() +
+      Math.random().toString(36).substring(2, 6).toUpperCase()
+    );
+  }
 
-        <Text style={styles.lockTitle}>
-          Teachers Only
-        </Text>
+  async function handleCreateEvent() {
+    if (!title.trim()) {
+      Alert.alert('Missing Title', 'Please enter a session title.');
+      return;
+    }
 
+    if (eventType === 'classroom' && !classSection.trim()) {
+      Alert.alert(
+        'Missing Class or Section',
+        'Please enter the class or section for classroom attendance.'
+      );
+      return;
+    }
+
+    if (endDate <= startDate) {
+      Alert.alert(
+        'Invalid Schedule',
+        'The end date and time must be later than the start date and time.'
+      );
+      return;
+    }
+
+    setSaving(true);
+    setPayload('');
+
+    try {
+      const event: Event = {
+        eventId: generateEventCode(),
+        title: title.trim(),
+        start: startDate.toISOString(),
+        end: endDate.toISOString(),
+        venue: venue.trim(),
+        eventType,
+        classSection:
+          eventType === 'classroom'
+            ? classSection.trim()
+            : undefined,
+      };
+
+      const result = await createEvent(event);
+
+      if (result.error) {
+        Alert.alert('Unable to Create Session', result.error);
+        return;
+      }
+
+      setPayload(buildQRPayload(event));
+
+      Alert.alert(
+        'Success',
+        `${eventType === 'classroom' ? 'Classroom' : 'School event'} attendance session created successfully.`
+      );
+    } catch (error) {
+      console.error('Create session failed:', error);
+      Alert.alert(
+        'Error',
+        'Something went wrong while creating the session.'
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={styles.loadingText}>Checking account...</Text>
+      </View>
+    );
+  }
+
+  if (!isTeacher) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.lockTitle}>Teacher Access Only</Text>
         <Text style={styles.lockText}>
-          Only teacher accounts can create
-          events.
+          Please sign in using an account with the teacher role.
         </Text>
       </View>
     );
-  }
-
-  let pickerValue = startTime;
-
-  if (
-    picker === 'startTime'
-  ) {
-    pickerValue = startTime;
-  }
-
-  if (
-    picker === 'endDate' ||
-    picker === 'endTime'
-  ) {
-    pickerValue = endTime;
   }
 
   return (
     <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
+      style={styles.screen}
+      contentContainerStyle={styles.container}
       keyboardShouldPersistTaps="handled"
     >
-      <Text style={styles.pageTitle}>
-        Teacher
+      <Text style={styles.heading}>Attendance Management</Text>
+      <Text style={styles.subtitle}>
+        Create a classroom or school event attendance session.
       </Text>
 
-      <Text style={styles.createTitle}>
-        Create Event
-      </Text>
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle}>Attendance Type</Text>
 
-      <Text style={styles.label}>
-        Event Title
-      </Text>
+        <View style={styles.typeRow}>
+          <Pressable
+            style={[
+              styles.typeButton,
+              eventType === 'classroom' && styles.typeButtonActive,
+            ]}
+            onPress={() => {
+              setEventType('classroom');
+              setPayload('');
+            }}
+          >
+            <Text
+              style={[
+                styles.typeButtonText,
+                eventType === 'classroom' &&
+                  styles.typeButtonTextActive,
+              ]}
+            >
+              Classroom Attendance
+            </Text>
+          </Pressable>
 
-      <TextInput
-        value={eventTitle}
-        onChangeText={setEventTitle}
-        placeholder="e.g. Founders Day Assembly"
-        placeholderTextColor="#9AA4B2"
-        style={styles.input}
-      />
+          <Pressable
+            style={[
+              styles.typeButton,
+              eventType === 'school_event' && styles.typeButtonActive,
+            ]}
+            onPress={() => {
+              setEventType('school_event');
+              setPayload('');
+            }}
+          >
+            <Text
+              style={[
+                styles.typeButtonText,
+                eventType === 'school_event' &&
+                  styles.typeButtonTextActive,
+              ]}
+            >
+              School Event
+            </Text>
+          </Pressable>
+        </View>
 
-      <Text style={styles.label}>
-        Event Code
-      </Text>
-
-      <TextInput
-        value={eventCode}
-        onChangeText={setEventCode}
-        placeholder="e.g. EVT-2026-0001"
-        placeholderTextColor="#9AA4B2"
-        autoCapitalize="characters"
-        style={styles.input}
-      />
-
-      <Text style={styles.label}>
-        Start Time
-      </Text>
-
-      <Pressable
-        style={styles.timeButton}
-        onPress={openStartPicker}
-      >
-        <Text style={styles.timeText}>
-          {formatDateTime(startTime)}
+        <Text style={styles.label}>
+          {eventType === 'classroom'
+            ? 'Classroom Session Title'
+            : 'School Event Title'}
         </Text>
-      </Pressable>
 
-      <Text style={styles.label}>
-        End Time
-      </Text>
-
-      <Pressable
-        style={styles.timeButton}
-        onPress={openEndPicker}
-      >
-        <Text style={styles.timeText}>
-          {formatDateTime(endTime)}
-        </Text>
-      </Pressable>
-
-      {picker && (
-        <DateTimePicker
-          value={pickerValue}
-          mode={
-            picker === 'startDate' ||
-            picker === 'endDate'
-              ? 'date'
-              : 'time'
+        <TextInput
+          style={styles.input}
+          placeholder={
+            eventType === 'classroom'
+              ? 'e.g. Database Management'
+              : 'e.g. Foundation Day'
           }
-          display="default"
-          onChange={handlePickerChange}
+          placeholderTextColor={colors.textSecondary}
+          value={title}
+          onChangeText={(value) => {
+            setTitle(value);
+            setPayload('');
+          }}
         />
-      )}
 
-      <View style={styles.quickButtons}>
-        <Pressable
-          style={styles.quickButton}
-          onPress={() => addTime(30)}
-        >
-          <Text style={styles.quickText}>
-            +30 min
-          </Text>
-        </Pressable>
+        {eventType === 'classroom' && (
+          <>
+            <Text style={styles.label}>Class or Section</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="e.g. BSIT-3B"
+              placeholderTextColor={colors.textSecondary}
+              value={classSection}
+              onChangeText={(value) => {
+                setClassSection(value);
+                setPayload('');
+              }}
+            />
+          </>
+        )}
+
+        <Text style={styles.label}>Venue</Text>
+        <TextInput
+          style={styles.input}
+          placeholder={
+            eventType === 'classroom'
+              ? 'e.g. Computer Laboratory 1'
+              : 'e.g. School Gymnasium'
+          }
+          placeholderTextColor={colors.textSecondary}
+          value={venue}
+          onChangeText={(value) => {
+            setVenue(value);
+            setPayload('');
+          }}
+        />
+
+        <Text style={styles.label}>Start Date and Time</Text>
+        {renderDateTimeRow('start')}
+
+        <Text style={styles.label}>End Date and Time</Text>
+        {renderDateTimeRow('end')}
+
+        {Platform.OS !== 'web' && pickerTarget !== null && (
+          <DateTimePicker
+            key={`${pickerTarget}-${pickerMode}`}
+            value={pickerTarget === 'start' ? startDate : endDate}
+            mode={pickerMode}
+            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+            onChange={handleNativePickerChange}
+          />
+        )}
 
         <Pressable
-          style={styles.quickButton}
-          onPress={() => addTime(60)}
+          style={[
+            styles.createButton,
+            saving && styles.disabledButton,
+          ]}
+          onPress={handleCreateEvent}
+          disabled={saving}
         >
-          <Text style={styles.quickText}>
-            +1 hour
-          </Text>
-        </Pressable>
-
-        <Pressable
-          style={styles.quickButton}
-          onPress={() => addTime(120)}
-        >
-          <Text style={styles.quickText}>
-            +2 hours
-          </Text>
+          {saving ? (
+            <ActivityIndicator color={colors.textOnPrimary} />
+          ) : (
+            <Text style={styles.createButtonText}>
+              Create Attendance Session
+            </Text>
+          )}
         </Pressable>
       </View>
 
-      {message && (
-        <Text
-          style={[
-            styles.message,
-            message.includes(
-              'successfully'
-            )
-              ? styles.successMessage
-              : styles.errorMessage,
-          ]}
-        >
-          {message}
-        </Text>
-      )}
-
-      <AppButton
-        theme="primary"
-        title="Create Event"
-        icon="add"
-        onPress={handleCreateEvent}
-      />
-
-      {eventCreated && payload && (
-        <View style={styles.qrContainer}>
-          <Text style={styles.qrTitle}>
-            {eventTitle}
-          </Text>
+      {payload !== '' && (
+        <View style={styles.card}>
+          <Text style={styles.qrTitle}>Attendance QR Code</Text>
 
           <Text style={styles.qrSubtitle}>
-            {eventCode}
+            {eventType === 'classroom'
+              ? 'Classroom Attendance'
+              : 'School Event Attendance'}
           </Text>
 
-          <Text style={styles.scanText}>
-            Students can scan this QR code
-          </Text>
+          <Text style={styles.generatedTitle}>{title}</Text>
 
-          <View style={styles.qrBox}>
+          {eventType === 'classroom' && (
+            <Text style={styles.detailText}>
+              Class/Section: {classSection}
+            </Text>
+          )}
+
+          {!!venue.trim() && (
+            <Text style={styles.detailText}>Venue: {venue}</Text>
+          )}
+
+          <View style={styles.qrContainer}>
             <QRCode
               value={payload}
               size={220}
-              backgroundColor="white"
-              color="black"
+              backgroundColor="#FFFFFF"
+              color="#10213A"
             />
           </View>
 
-          <Text style={styles.successText}>
-            Event created successfully!
+          <Text style={styles.qrHint}>
+            Students can scan this QR code to record their attendance.
           </Text>
         </View>
       )}
@@ -499,168 +553,180 @@ export default function TeacherScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0B1020',
-  },
-
-  content: {
-    paddingHorizontal: 24,
-    paddingTop: 24,
-    paddingBottom: 40,
-  },
-
-  centerContainer: {
-    flex: 1,
-    backgroundColor: '#0B1020',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-  },
-
-  loadingText: {
-    marginTop: 12,
-    fontSize: 15,
-    color: '#AAB4C5',
-  },
-
-  pageTitle: {
-    fontSize: 26,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    marginBottom: 40,
-  },
-
-  createTitle: {
-    fontSize: 25,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    marginBottom: 28,
-  },
-
-  label: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
-    marginBottom: 8,
-  },
-
-  input: {
-    height: 60,
-    backgroundColor: '#11182B',
-    borderWidth: 1,
-    borderColor: '#31548F',
-    borderRadius: 12,
-    paddingHorizontal: 18,
-    fontSize: 16,
-    color: '#FFFFFF',
-    marginBottom: 20,
-  },
-
-  timeButton: {
-    height: 60,
-    backgroundColor: '#11182B',
-    borderWidth: 1,
-    borderColor: '#31548F',
-    borderRadius: 12,
-    paddingHorizontal: 18,
-    justifyContent: 'center',
-    marginBottom: 20,
-  },
-
-  timeText: {
-    fontSize: 16,
-    color: '#FFFFFF',
-  },
-
-  quickButtons: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 24,
-  },
-
-  quickButton: {
-    backgroundColor: '#11182B',
-    borderWidth: 1,
-    borderColor: '#31548F',
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-  },
-
-  quickText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-
-  message: {
-    textAlign: 'center',
-    fontSize: 14,
-    marginBottom: 12,
-  },
-
-  successMessage: {
-    color: '#4ADE80',
-  },
-
-  errorMessage: {
-    color: '#F87171',
-  },
-
-  lockTitle: {
-    marginTop: 16,
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-
-  lockText: {
-    marginTop: 8,
-    fontSize: 15,
-    color: '#AAB4C5',
-    textAlign: 'center',
-  },
-
-  qrContainer: {
-    alignItems: 'center',
-    marginTop: 32,
-    paddingTop: 24,
-    borderTopWidth: 1,
-    borderTopColor: '#27324A',
-  },
-
-  qrTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    textAlign: 'center',
-  },
-
-  qrSubtitle: {
-    fontSize: 14,
-    color: '#AAB4C5',
-    marginTop: 4,
-  },
-
-  scanText: {
-    fontSize: 14,
-    color: '#AAB4C5',
-    marginTop: 8,
-    marginBottom: 16,
-  },
-
-  qrBox: {
-    backgroundColor: '#FFFFFF',
-    padding: 16,
-    borderRadius: 12,
-  },
-
-  successText: {
-    color: '#4ADE80',
-    fontSize: 14,
-    fontWeight: '600',
-    marginTop: 12,
-  },
-});
+function createStyles(colors: ReturnType<typeof useTheme>['colors']) {
+  return StyleSheet.create({
+    screen: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    container: {
+      padding: 20,
+      paddingBottom: 40,
+    },
+    center: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: 24,
+      backgroundColor: colors.background,
+    },
+    loadingText: {
+      marginTop: 12,
+      color: colors.textSecondary,
+    },
+    lockTitle: {
+      fontSize: 22,
+      fontWeight: '700',
+      color: colors.textPrimary,
+      textAlign: 'center',
+    },
+    lockText: {
+      color: colors.textSecondary,
+      textAlign: 'center',
+      marginTop: 10,
+      lineHeight: 22,
+    },
+    heading: {
+      fontSize: 25,
+      fontWeight: '800',
+      color: colors.textPrimary,
+    },
+    subtitle: {
+      color: colors.textSecondary,
+      marginTop: 8,
+      marginBottom: 20,
+      lineHeight: 21,
+    },
+    card: {
+      backgroundColor: colors.card,
+      borderRadius: 20,
+      padding: 18,
+      marginBottom: 20,
+      borderWidth: 1,
+      borderColor: colors.glassBorder,
+      shadowColor: colors.shadow,
+      shadowOffset: { width: 0, height: 5 },
+      shadowOpacity: 0.12,
+      shadowRadius: 12,
+      elevation: 3,
+    },
+    sectionTitle: {
+      fontSize: 18,
+      fontWeight: '700',
+      color: colors.textPrimary,
+      marginBottom: 14,
+    },
+    typeRow: {
+      gap: 10,
+      marginBottom: 18,
+    },
+    typeButton: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 12,
+      paddingVertical: 14,
+      paddingHorizontal: 12,
+      backgroundColor: colors.surface,
+      alignItems: 'center',
+    },
+    typeButtonActive: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
+    typeButtonText: {
+      color: colors.textPrimary,
+      fontWeight: '600',
+      textAlign: 'center',
+    },
+    typeButtonTextActive: {
+      color: colors.textOnPrimary,
+    },
+    label: {
+      color: colors.textPrimary,
+      fontWeight: '600',
+      marginBottom: 8,
+      marginTop: 12,
+    },
+    input: {
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 12,
+      paddingHorizontal: 14,
+      paddingVertical: 13,
+      color: colors.textPrimary,
+    },
+    dateRow: {
+      flexDirection: 'row',
+      gap: 10,
+    },
+    dateButton: {
+      flex: 1,
+      paddingVertical: 14,
+      paddingHorizontal: 10,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 12,
+      alignItems: 'center',
+    },
+    dateButtonText: {
+      color: colors.textPrimary,
+      fontWeight: '600',
+    },
+    createButton: {
+      backgroundColor: colors.primary,
+      paddingVertical: 16,
+      borderRadius: 13,
+      alignItems: 'center',
+      marginTop: 24,
+    },
+    disabledButton: {
+      opacity: 0.6,
+    },
+    createButtonText: {
+      color: colors.textOnPrimary,
+      fontWeight: '700',
+      fontSize: 15,
+    },
+    qrTitle: {
+      color: colors.textPrimary,
+      fontSize: 21,
+      fontWeight: '800',
+      textAlign: 'center',
+    },
+    qrSubtitle: {
+      color: colors.primary,
+      fontWeight: '700',
+      textAlign: 'center',
+      marginTop: 8,
+    },
+    generatedTitle: {
+      fontSize: 17,
+      fontWeight: '700',
+      color: colors.textPrimary,
+      textAlign: 'center',
+      marginTop: 12,
+    },
+    detailText: {
+      color: colors.textSecondary,
+      textAlign: 'center',
+      marginTop: 6,
+    },
+    qrContainer: {
+      alignSelf: 'center',
+      marginTop: 22,
+      padding: 16,
+      backgroundColor: '#FFFFFF',
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: '#E1E8F1',
+    },
+    qrHint: {
+      color: colors.textSecondary,
+      textAlign: 'center',
+      lineHeight: 21,
+      marginTop: 16,
+    },
+  });
+}

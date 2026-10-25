@@ -1,23 +1,31 @@
-import {
-  Redirect,
-  Stack,
-  useSegments,
-} from 'expo-router';
 
+import { useEffect } from 'react';
 import {
   ActivityIndicator,
+  Platform,
   StyleSheet,
   View,
 } from 'react-native';
 
-import { COLORS } from '@/constants/colors';
+import * as NavigationBar from 'expo-navigation-bar';
+import { Stack, Redirect, useSegments } from 'expo-router';
 
+import { COLORS } from '@/constants/colors';
 import { useAuth } from '@/lib/auth';
+import { ThemeProvider } from '@/app/contexts/ThemeContext';
 
 export default function RootLayout() {
   const { session, loading } = useAuth();
-
   const segments = useSegments();
+  const path = segments[0];
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+
+    NavigationBar.setVisibilityAsync('hidden').catch((error) => {
+      console.warn('Could not hide navigation bar:', error);
+    });
+  }, []);
 
   if (loading) {
     return (
@@ -30,29 +38,31 @@ export default function RootLayout() {
     );
   }
 
-  const path = segments?.[0];
+  const publicRoutes = [
+    'login',
+    'register',
+    'reset-password',
+  ];
 
-  const inAuthGroup =
-    path === 'login' || path === 'register';
-
-  const inTabsGroup = path === '(tabs)';
+  if (!session && !publicRoutes.includes(path as string)) {
+    return <Redirect href="/login" />;
+  }
 
   return (
-    <Stack
-      screenOptions={{ headerShown: false }}
-    >
-      {!session && inTabsGroup && (
-        <Redirect href="/login" />
-      )}
-
-      {session && inAuthGroup && (
-        <Redirect href="/(tabs)" />
-      )}
-
-      <Stack.Screen name="login" />
-      <Stack.Screen name="register" />
-      <Stack.Screen name="(tabs)" />
-    </Stack>
+    <ThemeProvider>
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="login" />
+        <Stack.Screen name="register" />
+        <Stack.Screen name="reset-password" />
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="admin" />
+        <Stack.Screen name="admin-users" />
+        <Stack.Screen name="admin-events" />
+        <Stack.Screen name="admin-attendance" />
+        <Stack.Screen name="admin-reports" />
+        <Stack.Screen name="admin-photos" />
+      </Stack>
+    </ThemeProvider>
   );
 }
 
